@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角色控制遊戲</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;let playerFrames = [];
+let player;
+let groundY;
+
+// 鍵盤狀態
+let keys = {};
+
+// 遊戲物件
+let particles = [];
+
+function preload() {
+    // 載入所有動作幀圖片
+    // 0.png - 閒置/站立
+    // 1.png - 跑步1
+    // 2.png - 跑步2
+    // 7.png - 跳躍
+    // 3.png 4.png 5.png 6.png - 攻擊動作
+    for (let i = 0; i <= 7; i++) {
+        playerFrames[i] = loadImage('../' + i + '.png');
+    }
+}
+
+function setup() {
+    createCanvas(800, 600);
+    groundY = height - 100;
+    
+    // 初始化玩家
+    player = new Player(100, groundY - 40);
+}
+
+function draw() {
+    // 背景
+    background(135, 206, 235); // 天藍色背景
+    
+    // 繪製地面
+    fill(34, 139, 34);
+    rect(0, groundY, width, height - groundY);
+    
+    // 更新玩家
+    player.handleInput(keys);
+    player.update();
+    player.display();
+    
+    // 更新粒子效果
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].display();
+        if (particles[i].isDead()) {
+            particles.splice(i, 1);
+        }
+    }
+    
+    // 顯示玩家信息
+    fill(0);
+    textSize(16);
+    text(`位置: (${int(player.x)}, ${int(player.y)})`, 10, 20);
+    text(`速度Y: ${player.vy.toFixed(2)}`, 10, 40);
+    if (player.isAttacking) {
+        text('攻擊中!', 10, 60);
+    }
+}
+
+// 鍵盤事件
+function keyPressed() {
+    keys[key.toLowerCase()] = true;
+    keys[keyCode] = true;
+    return false;
+}
+
+function keyReleased() {
+    keys[key.toLowerCase()] = false;
+    keys[keyCode] = false;
+    return false;
+}
+
+// 玩家類別
+class Player {
+    constructor(x, groundY) {
+        this.x = x;
+        this.y = groundY;
+        this.groundY = groundY;
+        this.width = 80;
+        this.height = 100;
+        
+        // 物理屬性
+        this.vx = 0;
+        this.vy = 0;
+        this.speed = 5;
+        this.jumpPower = -15;
+        this.gravity = 0.6;
+        this.maxFallSpeed = 15;
+        
+        // 動畫狀態
+        this.currentFrame = 0;
+        this.frameCounter = 0;
+        this.animationSpeed = 5; // 幀更新速度
+        
+        // 角色狀態
+        this.state = 'idle'; // idle, running, jumping, attacking
+        this.isAttacking = false;
+        this.attackCooldown = 0;
+        this.attackFrameIndex = 0; // 攻擊動作幀索引
+        this.direction = 1; // 1 = 右, -1 = 左
+    }
+    
+    handleInput(keys) {
+        // 移動控制
+        let isMoving = false;
+        this.vx = 0;
+        
+        if (keys['arrowleft'] || keys['a']) {
+            this.vx = -this.speed;
+            this.direction = -1;
+            isMoving = true;
+        }
+        if (keys['arrowright'] || keys['d']) {
+            this.vx = this.speed;
+            this.direction = 1;
+            isMoving = true;
+        }
+        
+        // 跳躍控制
+        if ((keys[' '] || keys['w']) && !this.isJumping) {
+            this.vy = this.jumpPower;
+            this.isJumping = true;
+        }
+        
+        // 攻擊控制
+        if ((keys['z'] || keys['x']) && this.attackCooldown <= 0 && !this.isAttacking && !this.isJumping) {
+            this.isAttacking = true;
+            this.attackCooldown = 60; // 攻擊冷卻時間
+            this.attackFrameIndex = 0;
+            this.state = 'attacking';
+        }
+        
+        // 更新狀態
+        if (this.isAttacking) {
+            this.state = 'attacking';
+        } else if (this.isJumping) {
+            this.state = 'jumping';
+        } else if (isMoving) {
+            this.state = 'running';
+        } else {
+            this.state = 'idle';
+        }
+    }
+    
+    update() {
+        // 重力
+        this.vy += this.gravity;
+        if (this.vy > this.maxFallSpeed) {
+            this.vy = this.maxFallSpeed;
+        }
+        
+        // 位置更新
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // 地面碰撞
+        this.isJumping = false;
+        if (this.y >= this.groundY) {
+            this.y = this.groundY;
+            this.vy = 0;
+        } else {
+            this.isJumping = true;
+        }
+        
+        // 邊界檢查
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > width) this.x = width - this.width;
+        
+        // 更新攻擊狀態
+        if (this.isAttacking) {
+            this.frameCounter++;
+            if (this.frameCounter >= this.animationSpeed) {
+                this.frameCounter = 0;
+                this.attackFrameIndex++;
+                if (this.attackFrameIndex >= 4) {
+                    this.isAttacking = false;
+                    this.attackFrameIndex = 0;
+                }
+            }
+        } else {
+            // 更新普通動畫幀
+            this.frameCounter++;
+            if (this.frameCounter >= this.animationSpeed) {
+                this.frameCounter = 0;
+                if (this.state === 'running') {
+                    this.currentFrame = (this.currentFrame + 1) % 2; // 0 和 1 之間切換
+                } else if (this.state === 'idle') {
+                    this.currentFrame = 0;
+                } else if (this.state === 'jumping') {
+                    this.currentFrame = 7; // 跳躍幀
+                }
+            }
+        }
+        
+        // 更新攻擊冷卻
+        if (this.attackCooldown > 0) {
+            this.attackCooldown--;
+        }
+    }
+    
+    getFrameIndex() {
+        if (this.isAttacking) {
+            // 攻擊幀: 3.png 4.png 5.png 6.png
+            return 3 + this.attackFrameIndex;
+        } else if (this.state === 'jumping') {
+            return 7;
+        } else if (this.state === 'running') {
+            return this.currentFrame === 0 ? 1 : 2;
+        } else {
+            return 0;
+        }
+    }
+    
+    display() {
+        push();
+        
+        // 根據方向翻轉
+        if (this.direction === 1) {
+            translate(this.x, this.y);
+        } else {
+            translate(this.x + this.width, this.y);
+            scale(-1, 1);
+            translate(-this.width, 0);
+        }
+        
+        // 獲取對應的幀圖片
+        let frameIndex = this.getFrameIndex();
+        if (playerFrames[frameIndex]) {
+            image(playerFrames[frameIndex], 0, 0, this.width, this.height);
+        }
+        
+        pop();
+    }
+}
+
+// 粒子類別（攻擊效果）
+class Particle {
+    constructor(x, y, vx, vy, c) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.life = 255;
+        this.color = c;
+        this.size = 5;
+    }
+    
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.2; // 重力
+        this.life -= 8;
+    }
+    
+    display() {
+        push();
+        fill(red(this.color), green(this.color), blue(this.color), this.life);
+        circle(this.x, this.y, this.size);
+        pop();
+    }
+    
+    isDead() {
+        return this.life <= 0;
+    }
+}
+
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #222;
+        }
+        #p5-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #instructions {
+            color: white;
+            margin-top: 20px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        #instructions h2 {
+            margin-top: 0;
+        }
+        #instructions p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="p5-container">
+        <div id="sketch"></div>
+        <div id="instructions">
+            <h2>遊戲控制說明</h2>
+            <p>← → : 左右移動</p>
+            <p>SPACE : 跳躍</p>
+            <p>Z : 攻擊</p>
+        </div>
+    </div>
+    <script src="sketch.js"></script>
+</body>
+</html>
